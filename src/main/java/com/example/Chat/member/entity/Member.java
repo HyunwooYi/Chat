@@ -1,0 +1,51 @@
+    package com.example.Chat.member.entity;
+
+    import lombok.Builder;
+    import lombok.Getter;
+    import jakarta.persistence.*;
+    import lombok.NoArgsConstructor;
+
+    @Getter
+    @NoArgsConstructor
+    @Entity
+    @Table(name = "members")
+    public class Member {
+
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        @Column(name = "user_id")
+        private Long userId;
+
+        @Column(nullable = false)
+        private String loginId;
+
+        @Column(nullable = false)
+        private String username;
+
+        @Column(nullable = false)
+        private String email;
+
+        @Enumerated(EnumType.STRING)
+        private Role role;
+
+        private String provider;
+
+        private String providerId;
+
+        @Enumerated(EnumType.STRING)
+        private MemberStatus memberStatus;
+
+
+
+        @Builder
+        private Member(String username, String loginId, String email, Role role, String provider, String providerId, MemberStatus memberStatus) {
+            this.username = username;
+            this.loginId = loginId;
+            this.email = email;
+            this.role = role;
+            this.provider = provider;
+            this.providerId = providerId;
+            this.memberStatus = memberStatus;
+        }
+
+    }
