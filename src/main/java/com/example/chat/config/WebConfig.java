@@ -3,10 +3,8 @@ package com.example.chat.config;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 
 @Configuration
-@EnableWebSocketMessageBroker
 public class WebConfig implements WebMvcConfigurer {
 
     private static final String DEVELOP_FRONT_ADDRESS = "http://localhost:3000";
@@ -16,8 +14,8 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addMapping("/**")
                 .allowedOrigins(DEVELOP_FRONT_ADDRESS)
                 .allowedMethods("GET", "POST", "PUT", "DELETE")
-                .exposedHeaders("location")
                 .allowedHeaders("*")
+                .exposedHeaders("location")
                 .allowCredentials(true);
     }
 }
