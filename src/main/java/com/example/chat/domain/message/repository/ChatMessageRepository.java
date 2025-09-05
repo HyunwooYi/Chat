@@ -5,6 +5,5 @@ import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
 import reactor.core.publisher.Flux;
 
 public interface ChatMessageRepository extends ReactiveMongoRepository<ChatMessage, String> {
-    Flux<ChatMessage> findAllByRoomIdOrderByLocalDateAsc(Long id);
-//    Flux<ChatMessage> findAllByRoomId(Long roomId);
+    Flux<ChatMessage> findAllByRoomIdOrderByCreatedAtAsc(Long roomId);
 }
