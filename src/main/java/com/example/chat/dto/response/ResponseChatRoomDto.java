@@ -12,10 +12,13 @@ public class ResponseChatRoomDto {
 
     private Long id;
     private String title;
-    private LocalDate localDate;
+    private LocalDate localDate; // = ChatRoom.createdDate
 
     public static ResponseChatRoomDto of(ChatRoom chatRoom) {
-        return new ResponseChatRoomDto(chatRoom.getId(), chatRoom.getTitle(),
-                chatRoom.getCreatedDate());
+        return new ResponseChatRoomDto(
+                chatRoom.getId(),
+                chatRoom.getTitle(),
+                chatRoom.getCreatedDate()
+        );
     }
 }
