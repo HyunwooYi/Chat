@@ -39,3 +39,5 @@ out/
 ### yml ###
 *.yml
 .env
+
+.DS*

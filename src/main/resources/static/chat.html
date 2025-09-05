@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <title>채팅방</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        :root { --bg:#0f172a; --panel:#111827; --line:#1f2937; --me:#2563eb; --you:#374151; --txt:#e5e7eb; --muted:#9ca3af; --accent:#22c55e; }
+        *{box-sizing:border-box}
+        body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+        .app{max-width:980px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
+        header{display:flex;align-items:center;gap:12px;padding:16px;border-bottom:1px solid var(--line)}
+        header .title{font-weight:700}
+        header .sp{flex:1}
+        header button, header input{height:32px}
+        button{background:#1f2937;border:1px solid #374151;color:#e5e7eb;border-radius:8px;padding:6px 10px;cursor:pointer}
+        button:hover{border-color:#475569}
+        input{background:#0b1220;border:1px solid #1e293b;color:#e5e7eb;border-radius:8px;padding:8px}
+        main{display:grid;grid-template-columns:260px 1fr;gap:14px;padding:16px;flex:1;min-height:0}
+        .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+        .rooms{padding:14px;display:flex;flex-direction:column;gap:10px}
+        .row{display:flex;gap:8px}
+        .rooms h3{margin:0 0 10px 0;font-size:13px;color:var(--muted);letter-spacing:.2px}
+        .room-list{margin-top:10px;display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto}
+        .room-item{display:flex;align-items:center;justify-content:space-between;border:1px solid #1f2937;background:#0b1220;border-radius:10px;padding:10px}
+        .room-item span{font-size:13px;color:#cbd5e1}
+        .room-item button{height:28px}
+        .chat{display:flex;flex-direction:column}
+        .chat-header{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+        .chat-header .badge{font-size:12px;color:#10b981;border:1px solid #10b981;padding:2px 8px;border-radius:999px}
+        .messages{padding:14px;flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px}
+        .msg{max-width:70%;display:flex;gap:8px}
+        .me{align-self:flex-end;justify-content:flex-end}
+        .me .bubble{background:var(--me)}
+        .you .bubble{background:var(--you)}
+        .bubble{padding:10px 12px;border-radius:14px;color:#fff;word-break:break-word;white-space:pre-wrap}
+        .meta{font-size:11px;color:var(--muted);margin-top:4px}
+        .composer{border-top:1px solid var(--line);padding:10px;display:flex;gap:8px}
+        .composer input{flex:1}
+        .log{padding:10px;border-top:1px dashed var(--line);max-height:120px;overflow:auto;color:#94a3b8;font-size:12px}
+        .ok{color:#22c55e} .bad{color:#ef4444} .warn{color:#f59e0b}
+        .pill{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid #334155;color:#cbd5e1}
+    </style>
+</head>
+<body>
+<div class="app">
+    <header>
+        <div class="title">웹소켓 채팅</div>
+        <span id="meText" class="pill">로그인 필요</span>
+        <div class="sp"></div>
+        <button id="btnLogin">구글 로그인</button>
+        <button id="btnMe">내 정보 확인</button>
+    </header>
+
+    <main>
+        <!-- 좌측: 방 목록 & 조작 -->
+        <section class="panel rooms">
+            <h3>채팅방</h3>
+
+            <div class="row">
+                <input id="roomTitle" placeholder="새 방 제목" style="flex:1" />
+                <button id="btnCreate">방 생성</button>
+            </div>
+
+            <div class="row">
+                <input id="roomId" placeholder="roomId" style="width:110px" />
+                <button id="btnJoin">방 구독(Join + WS 연결)</button>
+                <button id="btnLeave">연결 해제</button>
+            </div>
+
+            <div class="row" style="margin-top:6px">
+                <button id="btnReloadRooms">방 목록 새로고침</button>
+            </div>
+
+            <div class="room-list" id="roomList"></div>
+
+            <div class="log" id="log"></div>
+        </section>
+
+        <!-- 우측: 채팅 화면 -->
+        <section class="panel chat">
+            <div class="chat-header">
+                <div style="font-weight:600">현재 방</div>
+                <div id="roomBadge" class="badge" style="display:none"></div>
+                <div class="sp"></div>
+                <div id="status" class="pill">WS 미연결</div>
+            </div>
+
+            <div id="messages" class="messages"></div>
+
+            <div class="composer">
+                <input id="msg" placeholder="메시지를 입력하고 Enter" />
+                <button id="btnSend">전송</button>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+    (() => {
+        // ---------- helpers ----------
+        const $ = (id) => document.getElementById(id);
+        const log = (m, cls='') => {
+            const t = new Date().toLocaleTimeString();
+            $('log').innerHTML += `<div class="${cls}">[${t}] ${m}</div>`;
+            $('log').scrollTop = $('log').scrollHeight;
+        };
+        const fmt = (iso) => {
+            if (!iso) return '';
+            try {
+                const d = new Date(iso);
+                return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+            } catch { return ''; }
+        };
+        const setStatus = (s) => $('status').textContent = s;
+
+        let myMemberId = null;      // (선택) 백엔드에서 제공 시 하이라이트
+        let currentRoomId = null;
+        let ws=null, stomp=null;
+
+        // ---------- 로그인 & 내 정보 ----------
+        $('btnLogin').onclick = () => location.href = '/oauth2/authorization/google';
+
+        $('btnMe').onclick = async () => {
+            try {
+                const res = await fetch('/api/v1/members/me', { credentials: 'include' });
+                const text = await res.text();
+                if (res.ok) {
+                    $('meText').textContent = text;
+                    log('내 정보 OK', 'ok');
+                } else {
+                    $('meText').textContent = '로그인 필요';
+                    log('내 정보 실패: HTTP ' + res.status, 'bad');
+                }
+            } catch (e) {
+                log('내 정보 에러: ' + e, 'bad');
+            }
+        };
+
+        // ---------- 방 목록 ----------
+        async function reloadRooms() {
+            try {
+                const res = await fetch('/api/v1/chatrooms/chatList', { credentials: 'include' });
+                if (!res.ok) return;
+                const arr = await res.json(); // [{id,title,...}]
+                const list = $('roomList');
+                list.innerHTML = '';
+                for (const r of arr) {
+                    const div = document.createElement('div');
+                    div.className = 'room-item';
+                    div.innerHTML = `<span>#${r.id} · ${r.title}</span>`;
+                    const btn = document.createElement('button');
+                    btn.textContent = '입장';
+                    btn.onclick = () => {
+                        $('roomId').value = r.id;
+                        joinAndConnect();
+                    };
+                    div.appendChild(btn);
+                    list.appendChild(div);
+                }
+            } catch {}
+        }
+        $('btnReloadRooms').onclick = reloadRooms;
+        reloadRooms();
+
+        // ---------- 방 생성 ----------
+        $('btnCreate').onclick = async () => {
+            const title = $('roomTitle').value.trim();
+            if (!title) return alert('방 제목을 입력하세요');
+            try {
+                const res = await fetch('/api/v1/chatrooms/create', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    credentials: 'include',
+                    body: JSON.stringify({ title })
+                });
+                if (!res.ok) {
+                    log('[방 생성 실패] HTTP ' + res.status, 'bad');
+                    return;
+                }
+                const dto = await res.json();
+                $('roomId').value = dto.id;
+                log(`[방 생성 성공] id=${dto.id}, title=${dto.title}`, 'ok');
+                await reloadRooms();
+            } catch (e) {
+                log('방 생성 에러: ' + e, 'bad');
+            }
+        };
+
+        // ---------- Join + WS 연결 ----------
+        $('btnJoin').onclick = () => joinAndConnect();
+
+        async function joinAndConnect() {
+            const roomId = $('roomId').value.trim();
+            if (!roomId) return alert('roomId를 입력하세요');
+
+            // 1) join REST로 멤버십 등록 (Redis set에 memberId 추가)
+            try {
+                const j = await fetch(`/api/v1/chatrooms/${roomId}/join`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if (!j.ok) {
+                    log(`[join 실패] HTTP ${j.status}`, 'bad');
+                    return;
+                }
+                log(`[join 성공] roomId=${roomId}`, 'ok');
+            } catch (e) {
+                log('[join 에러] ' + e, 'bad');
+                return;
+            }
+
+            // 2) STOMP 연결 및 구독
+            connectWS(roomId);
+        }
+
+        function connectWS(roomId) {
+            if (stomp?.connected) {
+                log('이미 연결됨');
+                return;
+            }
+            ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+            stomp = Stomp.over(ws);
+            stomp.debug = () => {};
+
+            stomp.connect({}, () => {
+                setStatus('WS 연결됨');
+                currentRoomId = roomId;
+                $('roomBadge').style.display = 'inline-block';
+                $('roomBadge').textContent = `room #${roomId}`;
+                log('STOMP 연결 성공', 'ok');
+
+                stomp.subscribe(`/sub/chatroom/${roomId}`, (frame) => {
+                    try {
+                        const msg = JSON.parse(frame.body);
+                        appendMessage(msg);
+                    } catch {
+                        appendMessage({ writerId: null, content: frame.body, createdAt: null });
+                    }
+                });
+
+                log(`구독 완료: /sub/chatroom/${roomId}`);
+            }, (err) => {
+                setStatus('WS 종료됨');
+                log('STOMP 연결 실패: ' + err, 'bad');
+                currentRoomId = null;
+            });
+        }
+
+        function disconnectWS() {
+            try { stomp?.disconnect(() => setStatus('WS 종료됨')); } catch {}
+            try { ws?.close(); } catch {}
+            stomp = null; ws = null; currentRoomId = null;
+            $('roomBadge').style.display = 'none';
+        }
+        $('btnLeave').onclick = disconnectWS;
+
+        // ---------- 메시지 입/출력 ----------
+        $('btnSend').onclick = sendMessage;
+        $('msg').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        function sendMessage() {
+            if (!stomp?.connected) return alert('먼저 방에 연결하세요');
+            const content = $('msg').value;
+            if (!content) return;
+            const roomId = currentRoomId || $('roomId').value.trim();
+            stomp.send(`/pub/chat/${roomId}`, { 'content-type':'application/json' }, JSON.stringify({ content }));
+            $('msg').value = '';
+        }
+
+        function appendMessage(m) {
+            // m: {id, roomId, writerId, content, createdAt}
+            const wrap = $('messages');
+            const item = document.createElement('div');
+
+            const mine = myMemberId && m.writerId && String(myMemberId) === String(m.writerId);
+            item.className = `msg ${mine ? 'me' : 'you'}`;
+
+            item.innerHTML = `
+      <div class="bubble">${(m.content ?? '').toString()}</div>
+      <div class="meta">${m.writerId != null ? '작성자 #' + m.writerId : ''} ${m.createdAt ? '· ' + fmt(m.createdAt) : ''}</div>
+    `;
+            wrap.appendChild(item);
+            wrap.scrollTop = wrap.scrollHeight;
+        }
+    })();
+</script>
+</body>
+</html>
