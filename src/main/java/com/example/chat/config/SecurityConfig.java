@@ -25,6 +25,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/css/**", "/js/**", "/images/**", "/favicon.ico", "/health").permitAll()
                         .requestMatchers("/ws/**").permitAll() // websocket handshake 허용
+                        .requestMatchers("/api/v1/members/**").permitAll()
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().permitAll()
                 )
@@ -35,7 +36,7 @@ public class SecurityConfig {
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(u -> u.userService(userService))
                         // 로그인 성공 후 이동할 위치 고정
-                        .defaultSuccessUrl("/api/v1/members/me", true)
+                        .defaultSuccessUrl("/chat.html", true)
                 );
 
         // 세션 기반 유지 (기본값). API 토큰 서버가 아니라면 STATELESS 설정 금지.
