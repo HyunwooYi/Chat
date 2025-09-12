@@ -26,6 +26,9 @@ public class SecurityConfig {
                         .requestMatchers("/css/**", "/js/**", "/images/**", "/favicon.ico", "/health").permitAll()
                         .requestMatchers("/ws/**").permitAll() // websocket handshake 허용
                         .requestMatchers("/api/v1/members/**").permitAll()
+
+                        // 관리자 전용 도메인
+                        .requestMatchers("/api/v1/admin/++").hasRole("ADMIN")
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().permitAll()
                 )
