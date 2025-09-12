@@ -1,5 +1,6 @@
     package com.example.chat.member.entity;
 
+    import com.example.chat.auth.Role;
     import lombok.Builder;
     import lombok.Getter;
     import jakarta.persistence.*;

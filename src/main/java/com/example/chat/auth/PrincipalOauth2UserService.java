@@ -3,7 +3,6 @@ package com.example.chat.auth;
 import com.example.chat.auth.userInfo.GoogleUserInfo;
 import com.example.chat.auth.userInfo.OAuth2UserInfo;
 import com.example.chat.member.entity.MemberStatus;
-import com.example.chat.member.entity.Role;
 import com.example.chat.member.entity.Member;
 import com.example.chat.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
