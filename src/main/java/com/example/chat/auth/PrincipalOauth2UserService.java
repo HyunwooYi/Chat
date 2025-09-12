@@ -2,6 +2,7 @@ package com.example.chat.auth;
 
 import com.example.chat.auth.userInfo.GoogleUserInfo;
 import com.example.chat.auth.userInfo.OAuth2UserInfo;
+import com.example.chat.config.AppAdminProps;
 import com.example.chat.member.entity.MemberStatus;
 import com.example.chat.member.entity.Member;
 import com.example.chat.member.repository.MemberRepository;
@@ -19,6 +20,7 @@ import java.util.Objects;
 public class PrincipalOauth2UserService extends DefaultOAuth2UserService {
 
     private final MemberRepository memberRepository;
+    private final AppAdminProps adminProps;
 
     // 후처리
     @Override
@@ -29,8 +31,7 @@ public class PrincipalOauth2UserService extends DefaultOAuth2UserService {
         OAuth2UserInfo oAuth2UserInfo = null;
         if (userRequest.getClientRegistration().getRegistrationId().equals("google")) {
             oAuth2UserInfo = new GoogleUserInfo(oAuth2User.getAttributes());
-        }
-        else {
+        } else {
             System.out.println("지원하지않음.");
         }
         String provider = Objects.requireNonNull(oAuth2UserInfo).getProvider();
@@ -38,7 +39,17 @@ public class PrincipalOauth2UserService extends DefaultOAuth2UserService {
         String email = oAuth2UserInfo.getProviderEmail();
         String loginId = provider + "_" + providerId;
         String username = oAuth2UserInfo.getProviderName();
-        Role role = Role.USER;
+
+        // 화이트리스트 체크(대소문자 무시 + 공백 제거)
+        boolean isWhitelisted = adminProps.getAdminEmails() != null &&
+                adminProps.getAdminEmails().stream()
+                        .filter(Objects::nonNull)
+                        .map(s -> s.trim().toLowerCase())
+                        .anyMatch(s -> s.equals((email == null ? "" : email.trim().toLowerCase())));
+
+        Role decidedRole = isWhitelisted ? Role.ADMIN : Role.USER;
+
+
         MemberStatus memberStatus = MemberStatus.UNBANNED;
 
         Member member = memberRepository.findByLoginId(loginId).orElse(null);
@@ -47,15 +58,17 @@ public class PrincipalOauth2UserService extends DefaultOAuth2UserService {
                     .loginId(loginId)
                     .email(email)
                     .username(username)
-                    .role(role)
+                    .role(decidedRole)
                     .provider(provider)
                     .providerId(providerId)
                     .memberStatus(memberStatus)
                     .build();
             memberRepository.save(member);
-        } else {
-            System.out.println("이미 로그인을 한적이 있습니다.");
-        }
+        } else // 기존 회원도 화이트리스트면 승격
+            if (isWhitelisted && member.getRole() != Role.ADMIN) {
+                member.setRole(Role.ADMIN);
+                memberRepository.save(member);
+            }
 
         return new PrincipalDetails(member, oAuth2User.getAttributes());
     }

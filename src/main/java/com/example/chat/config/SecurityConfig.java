@@ -28,7 +28,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/members/**").permitAll()
 
                         // 관리자 전용 도메인
-                        .requestMatchers("/api/v1/admin/++").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().permitAll()
                 )

@@ -14,7 +14,7 @@ public class ResponseChatRoomDto {
     private String title;
     private LocalDate localDate; // = ChatRoom.createdDate
 
-    public static ResponseChatRoomDto of(ChatRoom chatRoom) {
+    public static ResponseChatRoomDto from(ChatRoom chatRoom) {
         return new ResponseChatRoomDto(
                 chatRoom.getId(),
                 chatRoom.getTitle(),

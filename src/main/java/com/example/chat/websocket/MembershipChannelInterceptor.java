@@ -39,6 +39,13 @@ public class MembershipChannelInterceptor implements ChannelInterceptor {
         if (auth == null || !auth.isAuthenticated()) {
             throw new AccessDeniedException("unauthenticated");
         }
+
+        // 1. 관리자 우회: ADMIN이면 멤버십 검증 생략
+        if (isAdmin(auth)) {
+            return message; // 바로 통과
+        }
+
+        // 2. 일반 사용자라면 room 멤버십 검증
         Object principal = auth.getPrincipal(); // <- 여기!
         Long memberId = resolveMemberId(principal); // 아래 헬퍼
 
@@ -83,5 +90,10 @@ public class MembershipChannelInterceptor implements ChannelInterceptor {
             if (loginId != null) return Long.valueOf(String.valueOf(loginId));
         }
         throw new AccessDeniedException("unsupported principal");
+    }
+
+    private boolean isAdmin(Authentication auth) {
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
     }
 }

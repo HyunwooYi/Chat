@@ -23,7 +23,7 @@ public class ChatRoomService {
     public ResponseChatRoomDto createChatRoom(RequestChatRoomDto dto) {
         // ChatRoom 생성자에서 createdDate는 LocalDate.now()로 자동 세팅되도록 해두세요.
         ChatRoom saved = chatRoomRepository.save(new ChatRoom(dto.getTitle()));
-        return ResponseChatRoomDto.of(saved);
+        return ResponseChatRoomDto.from(saved);
     }
 
     public void joinRoom(Long roomId, Long memberId) {
@@ -34,6 +34,6 @@ public class ChatRoomService {
     @Transactional(readOnly = true)
     public List<ResponseChatRoomDto> findChatRoomList() {
         List<ChatRoom> chatRooms = chatRoomRepository.findAll();
-        return chatRooms.stream().map(ResponseChatRoomDto::of).collect(Collectors.toList());
+        return chatRooms.stream().map(ResponseChatRoomDto::from).collect(Collectors.toList());
     }
 }
