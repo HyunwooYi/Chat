@@ -5,8 +5,9 @@
     import lombok.Getter;
     import jakarta.persistence.*;
     import lombok.NoArgsConstructor;
+    import lombok.Setter;
 
-    @Getter
+    @Getter @Setter
     @NoArgsConstructor
     @Entity
     @Table(name = "members")
