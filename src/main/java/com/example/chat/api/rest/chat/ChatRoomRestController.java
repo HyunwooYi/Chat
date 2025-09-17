@@ -4,6 +4,7 @@ import com.example.chat.auth.PrincipalDetails;
 import com.example.chat.domain.chatroom.service.ChatRoomService;
 import com.example.chat.dto.request.RequestChatRoomDto;
 import com.example.chat.dto.response.ResponseChatRoomDto;
+import com.example.chat.member.entity.MemberStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,13 +26,24 @@ public class ChatRoomRestController {
             @RequestBody RequestChatRoomDto req,
             @AuthenticationPrincipal PrincipalDetails principal) {
 
+        // 1. 로그인 사용자 정보 확인
+        if (principal == null || principal.getMember() == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        // 2) 밴 여부 체크
+        if (principal.getMember().getMemberStatus() == MemberStatus.BANNED) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         ResponseChatRoomDto dto = chatRoomService.createChatRoom(req);
 
         Long memberId = principal.getMember().getMemberId();
-        chatRoomService.joinRoom(dto.getId(), memberId); // ← 신규 메서드 추가(아래 참고)
+        chatRoomService.joinRoom(dto.getId(), memberId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
+
     @GetMapping("/chatList")
     public ResponseEntity<List<ResponseChatRoomDto>> getChatRoomList() {
         List<ResponseChatRoomDto> responses = chatRoomService.findChatRoomList();

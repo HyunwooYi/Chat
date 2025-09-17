@@ -3,6 +3,7 @@ package com.example.chat.api.messaging;
 import com.example.chat.auth.PrincipalDetails;
 import com.example.chat.domain.message.service.ChatMessageService;
 import com.example.chat.dto.request.SendMessagePayload;
+import com.example.chat.member.entity.MemberStatus;
 import com.example.chat.util.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;

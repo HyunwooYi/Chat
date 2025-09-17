@@ -42,12 +42,6 @@ public class AdminMessageController {
         return adminMessageService.deleteById(id);
     }
 
-    // 방 메시지 전체 삭제
-    @DeleteMapping("/by-room/{roomId}")
-    public Mono<Void> purge(@PathVariable(name = "roomId") Long roomId) {
-        return adminMessageService.purgeByRoom(roomId);
-    }
-
     // 방 메시지 개수
     @GetMapping("/count")
     public Mono<Long> count(@RequestParam(name = "roomId") Long roomId) {
