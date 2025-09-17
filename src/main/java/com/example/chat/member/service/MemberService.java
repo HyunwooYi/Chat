@@ -1,6 +1,8 @@
 package com.example.chat.member.service;
 
 import com.example.chat.dto.response.NameDto;
+import com.example.chat.global.RestApiException;
+import com.example.chat.global.errorcode.MemberErrorCode;
 import com.example.chat.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -14,6 +16,6 @@ public class MemberService {
     public NameDto findNameById(Long memberId) {
         return memberRepository.findById(memberId)
                 .map(m -> new NameDto(m.getMemberId(), m.getUsername()))
-                .orElseThrow(() -> new IllegalArgumentException("member not found: " + memberId));
+                .orElseThrow(() -> new RestApiException(MemberErrorCode.MEMBER_NOT_FOUND));
     }
 }

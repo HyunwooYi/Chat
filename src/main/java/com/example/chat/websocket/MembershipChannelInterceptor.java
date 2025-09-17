@@ -2,6 +2,8 @@ package com.example.chat.websocket;
 
 
 import com.example.chat.auth.PrincipalDetails;
+import com.example.chat.member.entity.MemberStatus;
+import com.example.chat.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.Message;
@@ -14,13 +16,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Component;
 
-import java.security.Principal;
-
 @Component
 @RequiredArgsConstructor
 public class MembershipChannelInterceptor implements ChannelInterceptor {
 
     private final StringRedisTemplate redis;
+    private final MemberRepository memberRepository;
     private static final String SUB_PREFIX = "/sub/chatroom/"; // 기존 구독 경로
     private static final String PUB_PREFIX = "/pub/chat/";     // 발행 경로(컨트롤러 @MessageMapping와 매칭)
 
@@ -45,22 +46,25 @@ public class MembershipChannelInterceptor implements ChannelInterceptor {
             return message; // 바로 통과
         }
 
-        // 2. 일반 사용자라면 room 멤버십 검증
-        Object principal = auth.getPrincipal(); // <- 여기!
-        Long memberId = resolveMemberId(principal); // 아래 헬퍼
+        // 밴 유저 차단 (SUBSCRIBE/SEND에서만)
+        if (isBanned(auth)) {
+            throw new AccessDeniedException("banned user");
+        }
 
-        if (cmd == StompCommand.SUBSCRIBE) {
-            String dest = acc.getDestination();
-            if (dest != null && dest.startsWith(SUB_PREFIX)) {
-                Long roomId = parseRoomId(dest, SUB_PREFIX);
-                ensureMember(roomId, memberId);
-            }
-        } else if (cmd == StompCommand.SEND) {
-            String dest = acc.getDestination();
-            if (dest != null && dest.startsWith(PUB_PREFIX)) {
-                Long roomId = parseRoomId(dest, PUB_PREFIX);
-                ensureMember(roomId, memberId);
-            }
+
+        // 멤버십 검증 (ROOM 가입자만 SUB/SEND 가능)
+        final Object principal = auth.getPrincipal();
+        final Long memberId = resolveMemberId(principal);
+
+        final String dest = acc.getDestination();
+        if (dest == null) return message;
+
+        if (cmd == StompCommand.SUBSCRIBE && dest.startsWith(SUB_PREFIX)) {
+            Long roomId = parseRoomId(dest, SUB_PREFIX);
+            ensureMember(roomId, memberId);
+        } else if (cmd == StompCommand.SEND && dest.startsWith(PUB_PREFIX)) {
+            Long roomId = parseRoomId(dest, PUB_PREFIX);
+            ensureMember(roomId, memberId);
         }
         return message;
     }
@@ -95,5 +99,12 @@ public class MembershipChannelInterceptor implements ChannelInterceptor {
     private boolean isAdmin(Authentication auth) {
         return auth != null && auth.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+    }
+
+    private boolean isBanned(Authentication auth) {
+        Long memberId = resolveMemberId(auth.getPrincipal());
+        return memberRepository.findById(memberId)
+                .map(m -> m.getMemberStatus() == MemberStatus.BANNED)
+                .orElse(false);
     }
 }

@@ -234,16 +234,45 @@
                     });
                 }
 
-                // 과거 내역 로딩
+                // 과거 내역 로딩 (403이면 /join 후 1회 재시도)
                 async function loadHistory(roomId) {
                     try {
-                        const res = await fetch(`/api/v1/chat?roomId=${encodeURIComponent(roomId)}`, { credentials:'include' });
-                        if (!res.ok) { log(`[히스토리 실패] HTTP ${res.status}`); return; }
+                        const doFetch = async () =>
+                            fetch(`/api/v1/chat?roomId=${encodeURIComponent(roomId)}`, { credentials:'include' });
+
+                        // 1차 시도
+                        let res = await doFetch();
+
+                        // 인증 만료면 로그인 페이지로
+                        if (res.status === 401) {
+                            log('[히스토리 실패] 401 → 로그인 필요, 구글 로그인으로 이동');
+                            location.href = '/oauth2/authorization/google';
+                            return;
+                        }
+
+                        // 멤버십 없음(403) → 자동 가입 후 1회 재시도
+                        if (res.status === 403) {
+                            log('[히스토리 실패] 403 → 자동으로 /join 시도 후 재요청');
+                            await fetch(`/api/v1/chatrooms/${roomId}/join`, { method:'POST', credentials:'include' });
+                            res = await doFetch(); // 재시도
+
+                            if (!res.ok) { // 그래도 실패면 로그만 남기고 종료
+                                log(`[히스토리 실패-재시도] HTTP ${res.status}`);
+                                return;
+                            }
+                        } else if (!res.ok) { // 그 외 실패
+                            log(`[히스토리 실패] HTTP ${res.status}`);
+                            return;
+                        }
+
+                        // 성공 처리
                         const list = await res.json();
-                        list.sort((a,b)=> (new Date(a.createdAt||0)) - (new Date(b.createdAt||0)));
+                        list.sort((a,b) => (new Date(a.createdAt||0)) - (new Date(b.createdAt||0)));
                         for (const m of list) await appendMessage(m);
-                        log(`히스토리 로드: ${list.length}건`);
-                    } catch(e) { log('히스토리 에러: ' + e); }
+                        log(`히스토리 로드${res.status===403? '(재시도)': ''}: ${list.length}건`);
+                    } catch (e) {
+                        log('히스토리 에러: ' + e);
+                    }
                 }
 
                 // 방 입장(Join + 구독 + 히스토리)

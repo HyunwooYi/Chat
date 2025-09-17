@@ -6,9 +6,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.session.SessionRegistryImpl;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.session.RegisterSessionAuthenticationStrategy;
+import org.springframework.security.web.session.HttpSessionEventPublisher;
 
 @Configuration
 @EnableWebSecurity
@@ -16,6 +20,18 @@ import org.springframework.security.web.authentication.LoginUrlAuthenticationEnt
 public class SecurityConfig {
 
     private final PrincipalOauth2UserService userService;
+    private final SessionRegistry sessionRegistry = new SessionRegistryImpl();
+
+    @Bean
+    public SessionRegistry sessionRegistry() {
+        return sessionRegistry;
+    }
+
+    // 세션 만료 이벤트 전파
+    @Bean
+    public static HttpSessionEventPublisher httpSessionEventPublisher() {
+        return new HttpSessionEventPublisher();
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -36,6 +52,12 @@ public class SecurityConfig {
                 // 미인증 시 401이 아니라 구글 OAuth2로 리다이렉트
                 .exceptionHandling(h -> h
                         .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/oauth2/authorization/google"))
+                )
+                // 세션 등록 전략 (세션 레지스트리에 현재 세션을 등록)
+                .sessionManagement(sm -> sm
+                        .sessionAuthenticationStrategy(
+                                new RegisterSessionAuthenticationStrategy(sessionRegistry())
+                        )
                 )
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(u -> u.userService(userService))

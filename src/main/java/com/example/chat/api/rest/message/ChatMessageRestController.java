@@ -5,6 +5,7 @@ import com.example.chat.domain.message.repository.ChatMessageRepository;
 import com.example.chat.domain.message.service.ChatMessageService;
 import com.example.chat.dto.response.ResponseMessageDto;
 import com.example.chat.domain.message.document.ChatMessage;
+import com.example.chat.member.entity.MemberStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
@@ -30,7 +31,11 @@ public class ChatMessageRestController {
     @GetMapping("/chat")
     public Mono<ResponseEntity<Object>> history(@RequestParam("roomId") Long roomId,
                                                 @AuthenticationPrincipal PrincipalDetails principal) {
-        Long me = principal.getMember().getMemberId(); // ✅ loginId → memberId 로 교체
+        if (principal.getMember().getMemberStatus() == MemberStatus.BANNED) {
+            throw new AccessDeniedException("banned user");
+        }
+
+        Long me = principal.getMember().getMemberId(); // loginId → memberId 로 교체
         String key = "room:" + roomId + ":members";
         Boolean ok = stringRedisTemplate.opsForSet().isMember(key, String.valueOf(me));
         if (!Boolean.TRUE.equals(ok)) throw new AccessDeniedException("not a room member");
