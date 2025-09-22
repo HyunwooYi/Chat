@@ -43,6 +43,18 @@
         .composer input{flex:1}
         /* 초기 에러 표시용 */
         #bootError{background:#7f1d1d;color:#fecaca;padding:10px;border-radius:8px;margin:12px}
+
+        /* ==== 신고 모달 ==== */
+        .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:center; justify-content:center; z-index:50}
+        .modal{background:#0b1220; border:1px solid #1f2937; border-radius:12px; padding:16px; width:min(440px, 92vw); color:#e5e7eb}
+        .modal h4{margin:0 0 8px 0; font-size:15px}
+        .modal .row{display:flex; gap:8px; margin-top:10px}
+        .modal select, .modal textarea{width:100%; background:#0b1220; border:1px solid #1e293b; color:#e5e7eb; border-radius:8px; padding:8px}
+        .modal textarea{min-height:90px; resize:vertical}
+        .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:12px}
+        .btn-secondary{background:#0b1220; border:1px solid #334155}
+        .badge-action{font-size:11px; border:1px solid #334155; color:#cbd5e1; padding:2px 6px; border-radius:999px; cursor:pointer; user-select:none}
+        .badge-action:hover{border-color:#475569}
     </style>
 </head>
 <body>
@@ -89,6 +101,31 @@
             </div>
         </section>
     </main>
+</div>
+
+<!-- 신고 모달 -->
+<div id="reportBackdrop" class="modal-backdrop">
+    <div class="modal">
+        <h4>메시지 신고</h4>
+        <div id="reportMsgPreview" class="pill" style="margin-bottom:8px"></div>
+        <label style="font-size:12px;color:#9ca3af">신고 사유</label>
+        <div class="row">
+            <select id="reportReason">
+                <option value="SPAM">스팸/광고</option>
+                <option value="SEXUAL">음란물</option>
+                <option value="ILLEGAL">불법/위험</option>
+                <option value="ETC">기타</option>
+            </select>
+        </div>
+        <label style="font-size:12px;color:#9ca3af; margin-top:8px; display:block">상세 설명 (선택)</label>
+        <div class="row">
+            <textarea id="reportDetail" placeholder="상세 내용을 적어주세요 (선택)"></textarea>
+        </div>
+        <div class="actions">
+            <button id="btnReportCancel" class="btn-secondary">취소</button>
+            <button id="btnReportSubmit">신고 제출</button>
+        </div>
+    </div>
 </div>
 
 <script defer>
@@ -142,7 +179,7 @@
                 const markDisplayed = (id) => { if (id) displayedIds.add(id); };
                 const hasDisplayed = (id) => id && displayedIds.has(id);
 
-                // ===== 메시지 렌더링 (정렬/이름/시간) =====
+                // ===== 메시지 렌더링 (정렬/이름/시간) + 신고 버튼 =====
                 async function appendMessage(msg) {
                     if (hasDisplayed(msg.id)) return;
                     if (!me) await ensureMe();
@@ -158,10 +195,18 @@
                     row.className = `msg ${mine ? 'me' : 'you'}`;
                     const bubble = document.createElement('div');
                     bubble.className = 'bubble';
+
+                    // XSS 최소화
+                    const contentHtml = (msg.content ?? '')
+                        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
                     bubble.innerHTML =
                         `<div class="meta" data-role="name">${displayName}</div>
-             <div data-role="content">${msg.content ?? ''}</div>
-             <div class="meta" data-role="time">${msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ''}</div>`;
+                         <div data-role="content">${contentHtml}</div>
+                         <div class="meta" data-role="time">${msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ''}</div>
+                         ${!mine ? `<div class="meta">
+                             <span class="badge-action" data-role="report" data-mid="${msg.id}">신고</span>
+                         </div>` : ''}`;
 
                     row.appendChild(bubble);
                     box.appendChild(row);
@@ -174,6 +219,17 @@
                         const name = await fetchName(msg.writerId);
                         const nameEl = bubble.querySelector('[data-role="name"]');
                         if (nameEl && nameEl.textContent !== name) nameEl.textContent = name;
+                    }
+
+                    // === 신고 버튼 핸들러 ===
+                    if (!mine) {
+                        const btn = bubble.querySelector('[data-role="report"]');
+                        if (btn) {
+                            btn.addEventListener('click', () => {
+                                const preview = bubble.querySelector('[data-role="content"]')?.textContent || '';
+                                openReportModal(String(btn.getAttribute('data-mid')), preview);
+                            });
+                        }
                     }
                 }
 
@@ -332,6 +388,73 @@
                         e.preventDefault(); sendMessage();
                     }
                 });
+
+                // ==== 신고 API ====
+                const REPORT_API = '/api/v1/reports'; // 서버 컨트롤러 prefix와 일치시켜야 함
+                const reportState = { messageId: null, contentPreview: '' };
+
+                function openReportModal(messageId, contentPreview) {
+                    reportState.messageId = messageId;
+                    reportState.contentPreview = contentPreview || '';
+                    const b = $('reportBackdrop');
+                    $('reportMsgPreview').textContent = `#${messageId} · ${(contentPreview||'').slice(0,40)}`;
+                    $('reportReason').value = 'ABUSE';
+                    $('reportDetail').value = '';
+                    b.style.display = 'flex';
+                }
+                function closeReportModal() {
+                    $('reportBackdrop').style.display = 'none';
+                }
+                $('btnReportCancel').onclick = closeReportModal;
+
+                $('btnReportSubmit').onclick = async () => {
+                    if (!reportState.messageId) return closeReportModal();
+
+                    const payload = {
+                        messageId: reportState.messageId, // 서버는 String(ObjectId) 기대
+                        reason: $('reportReason').value,
+                        detail: $('reportDetail').value?.trim() || null
+                    };
+
+                    try {
+                        const res = await fetch(REPORT_API, {
+                            method: 'POST',
+                            headers: {'Content-Type':'application/json'},
+                            credentials: 'include',
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (res.status === 201) {
+                            let body = null;
+                            try { body = await res.json(); } catch {}
+                            log(`신고 성공: id=${body?.id ?? '(바디 없음)'} reason=${payload.reason}`);
+                            alert('신고가 접수되었습니다.');
+                            closeReportModal();
+                            return;
+                        }
+                        if (res.ok) {
+                            log(`신고 성공(변형 응답): HTTP ${res.status}`);
+                            alert('신고가 접수되었습니다.');
+                            closeReportModal();
+                            return;
+                        }
+                        if (res.status === 401) { alert('로그인이 필요합니다. 로그인 페이지로 이동합니다.'); location.href='/oauth2/authorization/google'; return; }
+                        if (res.status === 403) { alert('해당 방의 참여자만 신고할 수 있습니다.'); return; }
+                        if (res.status === 404) { alert('메시지를 찾을 수 없습니다.'); return; }
+                        if (res.status === 400) {
+                            const err = await res.json().catch(()=> ({}));
+                            alert('신고 실패(검증 오류): ' + JSON.stringify(err));
+                            log('신고 실패 400: ' + JSON.stringify(err));
+                            return;
+                        }
+                        const txt = await res.text().catch(()=> '');
+                        alert('신고 실패: HTTP ' + res.status);
+                        log('신고 실패: HTTP ' + res.status + ' ' + txt);
+                    } catch (e) {
+                        alert('신고 중 오류가 발생했습니다.');
+                        log('신고 예외: ' + e);
+                    }
+                };
 
             })();
         } catch (err) {
