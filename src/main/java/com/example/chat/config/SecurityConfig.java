@@ -53,7 +53,7 @@ public class SecurityConfig {
                 .exceptionHandling(h -> h
                         .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/oauth2/authorization/google"))
                 )
-                // 세션 등록 전략 (세션 레지스트리에 현재 세션을 등록)
+                // 세션 등록 전략
                 .sessionManagement(sm -> sm
                         .sessionAuthenticationStrategy(
                                 new RegisterSessionAuthenticationStrategy(sessionRegistry())
@@ -64,8 +64,6 @@ public class SecurityConfig {
                         // 로그인 성공 후 이동할 위치 고정
                         .defaultSuccessUrl("/chat.html", true)
                 );
-
-        // 세션 기반 유지 (기본값). API 토큰 서버가 아니라면 STATELESS 설정 금지.
         return http.build();
     }
 }

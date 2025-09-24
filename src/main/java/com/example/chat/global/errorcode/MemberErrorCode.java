@@ -1,6 +1,5 @@
 package com.example.chat.global.errorcode;
 
-import com.example.chat.global.errorcode.ErrorCode;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

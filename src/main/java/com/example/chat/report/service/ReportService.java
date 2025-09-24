@@ -30,7 +30,7 @@ public class ReportService {
                     Report report = Report.builder()
                             .messageId(messageHexId)           // 메시지 ID 저장
                             .reporterId(reporterId)            // 신고자
-                            .reportedMemberId(msg.getWriterId()) // 신고당한 사람
+                            .reportedMemberId(msg.getWriterId()) // 신고 당한 사람
                             .reason(req.reason())
                             .detail(req.detail())
                             .build();

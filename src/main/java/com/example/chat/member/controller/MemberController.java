@@ -28,7 +28,7 @@ public class MemberController {
         return new MeDto(m.getMemberId(), m.getUsername(), m.getEmail());
     }
 
-    // 숫자인 경우에만 이 핸들럴로 온다
+    // 숫자인 경우에만 이 핸들러로 온다
     @GetMapping("/{memberId:\\d+}")
     public NameDto name(@PathVariable("memberId") Long memberId) {
         return memberService.findNameById(memberId);

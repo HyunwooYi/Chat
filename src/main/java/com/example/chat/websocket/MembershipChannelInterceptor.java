@@ -31,7 +31,6 @@ public class MembershipChannelInterceptor implements ChannelInterceptor {
         StompCommand cmd = acc.getCommand();
         if (cmd == null) return message;
 
-        // CONNECT / DISCONNECT / HEARTBEAT 같은 초기 프레임은 검증하지 않음
         if (!(cmd == StompCommand.SUBSCRIBE || cmd == StompCommand.SEND)) {
             return message;
         }
@@ -89,7 +88,7 @@ public class MembershipChannelInterceptor implements ChannelInterceptor {
             return pd.getMember().getMemberId();
         }
         if (principal instanceof OAuth2User ou) {
-            // 혹시 다른 구현체로 올 때 대비 (필요 시 커스터마이즈)
+            // 혹시 다른 구현체로 올 때 대비
             Object loginId = ou.getAttributes().get("loginId");
             if (loginId != null) return Long.valueOf(String.valueOf(loginId));
         }
