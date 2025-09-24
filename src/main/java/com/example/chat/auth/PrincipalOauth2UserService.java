@@ -40,7 +40,7 @@ public class PrincipalOauth2UserService extends DefaultOAuth2UserService {
         String loginId = provider + "_" + providerId;
         String username = oAuth2UserInfo.getProviderName();
 
-        // 화이트리스트 체크(대소문자 무시 + 공백 제거)
+        // 화이트리스트 체크 (대소문자 무시 + 공백 제거)
         boolean isWhitelisted = adminProps.getAdminEmails() != null &&
                 adminProps.getAdminEmails().stream()
                         .filter(Objects::nonNull)

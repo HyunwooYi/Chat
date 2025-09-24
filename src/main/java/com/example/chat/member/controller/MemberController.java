@@ -7,11 +7,7 @@ import com.example.chat.member.entity.Member;
 import com.example.chat.member.service.MemberService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -32,7 +28,7 @@ public class MemberController {
         return new MeDto(m.getMemberId(), m.getUsername(), m.getEmail());
     }
 
-    // 숫자인 경우에만 이 핸들럴로 온다
+    // 숫자인 경우에만 이 핸들러로 온다
     @GetMapping("/{memberId:\\d+}")
     public NameDto name(@PathVariable("memberId") Long memberId) {
         return memberService.findNameById(memberId);

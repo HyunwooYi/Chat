@@ -21,7 +21,7 @@ public class ChatRoomService {
 
 
     public ResponseChatRoomDto createChatRoom(RequestChatRoomDto dto) {
-        // ChatRoom 생성자에서 createdDate는 LocalDate.now()로 자동 세팅되도록 해두세요.
+        // ChatRoom 생성자에서 createdDate는 LocalDate.now()로 자동 세팅
         ChatRoom saved = chatRoomRepository.save(new ChatRoom(dto.getTitle()));
         return ResponseChatRoomDto.from(saved);
     }

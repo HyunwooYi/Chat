@@ -12,7 +12,7 @@ public class SessionKicker {
 
     private final SessionRegistry sessionRegistry;
 
-    /** 해당 memberId의 모든 로그인 세션을 즉시 만료(로그아웃 처리) */
+    // 해당 memberId의 모든 로그인 세션을 즉시 만료(로그아웃 처리)
     public int kickByMemberId(Long memberId) {
         int count = 0;
         for (Object principal : sessionRegistry.getAllPrincipals()) {
