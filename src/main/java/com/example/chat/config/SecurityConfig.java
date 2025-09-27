@@ -13,6 +13,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.authentication.session.RegisterSessionAuthenticationStrategy;
 import org.springframework.security.web.session.HttpSessionEventPublisher;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 @EnableWebSecurity
@@ -63,6 +64,16 @@ public class SecurityConfig {
                         .userInfoEndpoint(u -> u.userService(userService))
                         // 로그인 성공 후 이동할 위치 고정
                         .defaultSuccessUrl("/chat.html", true)
+                )
+                // 로그아웃 설정
+                .logout(logout -> logout
+                        // GET /logout 허용
+                        .logoutRequestMatcher(new AntPathRequestMatcher("/logout", "GET"))
+                        .clearAuthentication(true)
+                        .invalidateHttpSession(true)
+                        .deleteCookies("JSESSIONID")
+                        // 로그아웃 성공 후 즉시 구글 로그인 페이지로 리다이렉트
+                        .logoutSuccessUrl("/oauth2/authorization/google")
                 );
         return http.build();
     }
