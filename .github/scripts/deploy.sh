@@ -1,17 +1,61 @@
-##!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-BUILD_JAR=$(ls /home/ubuntu/app/build/libs/*.jar)
-JAR_NAME=$(basename $BUILD_JAR)
-echo ">>> build 파일명: $JAR_NAME" >> /home/ubuntu/deploy.log
+APP_DIR=/home/ubuntu/app
+SERVICE_NAME=chat
+SERVICE_FILE=/etc/systemd/system/${SERVICE_NAME}.service
 
-echo ">>> build 파일 복사" >> /home/ubuntu/deploy.log
-DEPLOY_PATH=/home/ubuntu/app/
-cp $BUILD_JAR $DEPLOY_PATH
+# JAR 경로 선택: (1) 고정 파일명, (2) Gradle 산출물에서 최신 SNAPSHOT
+JAR_CANDIDATE=""
+if [[ -f "${APP_DIR}/Chat-0.0.1-SNAPSHOT.jar" ]]; then
+  JAR_CANDIDATE="${APP_DIR}/Chat-0.0.1-SNAPSHOT.jar"
+else
+  JAR_CANDIDATE="$(ls -1 ${APP_DIR}/build/libs/*SNAPSHOT.jar 2>/dev/null | tail -n1 || true)"
+fi
 
-echo ">>> 현재 실행중인 애플리케이션 pid 확인 후 일괄 종료" >> /home/ubuntu/deploy.log
-sudo ps -ef | grep java | awk '{print $2}' | xargs kill -15
+# 표준 실행 파일명으로 복사
+if [[ -n "${JAR_CANDIDATE}" ]]; then
+  cp -f "${JAR_CANDIDATE}" "${APP_DIR}/Chat.jar"
+fi
 
-DEPLOY_JAR=$DEPLOY_PATH$JAR_NAME
-echo ">>> DEPLOY_JAR 배포"    >> /home/ubuntu/deploy.log
-echo ">>> $DEPLOY_JAR의 $JAR_NAME를 실행합니다" >> /home/ubuntu/deploy.log
-nohup java -jar $DEPLOY_JAR >> /home/ubuntu/deploy.log 2> /home/ubuntu/deploy_err.log &
+# systemd 유닛 파일(최초 1회 생성)
+if [[ ! -f "${SERVICE_FILE}" ]]; then
+  cat <<'EOF' > "/tmp/chat.service"
+[Unit]
+Description=Chat Spring Boot
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/app
+ExecStart=/usr/bin/java -Xms256m -Xmx512m -jar /home/ubuntu/app/Chat.jar
+Environment=JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+Environment=SPRING_PROFILES_ACTIVE=default
+Restart=always
+RestartSec=5
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  mv /tmp/chat.service "${SERVICE_FILE}"
+  systemctl daemon-reload
+  systemctl enable "${SERVICE_NAME}"
+fi
+
+# 애플리케이션 재기동
+systemctl stop "${SERVICE_NAME}" || true
+systemctl start "${SERVICE_NAME}"
+
+# 기동 확인(최대 60초 대기) — 필요한 엔드포인트로 바꿔도 됨
+for i in {1..30}; do
+  if curl -fsS http://127.0.0.1:8080/chat.html >/dev/null; then
+    echo "App is up"
+    exit 0
+  fi
+  sleep 2
+done
+
+echo "App failed to start. Recent logs:"
+journalctl -u "${SERVICE_NAME}" --no-pager -n 200 || true
+exit 1
