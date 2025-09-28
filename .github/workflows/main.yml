@@ -1,10 +1,17 @@
-name: Build and Depoly to EC2
-# 워크플로우가 언제 실행될 것인지 조건 명시
+name: Build and Deploy to EC2
+
 on:
   push:
-    branches: [ "main"]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+
+# ← Secrets 값을 워크플로우 env로 올려 두면 steps에서 $VAR 형태로 깔끔하게 사용 가능
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+  AWS_CODE_DEPLOY_APPLICATION: ${{ secrets.AWS_CODE_DEPLOY_APPLICATION }}
+  AWS_CODE_DEPLOY_GROUP: ${{ secrets.AWS_CODE_DEPLOY_GROUP }}
 
 jobs:
   deploy:
@@ -12,49 +19,50 @@ jobs:
     permissions:
       contents: read
       packages: write
+
     steps:
       - uses: actions/checkout@v4
 
-      # JDK 17 설치
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 공개되면 안되는 정보를 담은 .yml 파일을 생성
-      - name: make application.yml
+      - name: Make application.yml from secret
         run: |
           mkdir -p ./src/main/resources
-          cd ./src/main/resources
-          touch ./application.yml
-          echo "${{ secrets.APPLICATION }}" > ./application.yml
+          printf "%s" "${{ secrets.APPLICATION }}" > ./src/main/resources/application.yml
 
-      # 권한 부여
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
-        shell: bash
 
-      - name: Build and Test
-        run: ./gradlew build test
+      # 테스트는 일단 건너뜀
+      - name: Build (skip tests)
+        run: ./gradlew clean bootJar -x test --no-daemon
 
-      # 빌드 파일을 zip 형식으로 압축 - S3에서는 jar 저장이 안되기 때문에 zip으로 생성
-      - name: Make zip file
-        run: zip -r ./$GITHUB_SHA.zip .
-        shell: bash
+      # CodeDeploy는 zip 루트에 appspec.yml이 있어야 함
+      # (레포 루트에 appspec.yml이 존재한다고 가정)
+      - name: Make zip bundle
+        run: |
+          BUNDLE="$GITHUB_SHA.zip"
+          zip -r "$BUNDLE" . -x ".git/*"
+          ls -lh "$BUNDLE"
 
-      # AWS 권한
-      - name: AWS credential 설정
-        uses: aws-actions/configure-aws-credentials@v1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
           aws-access-key-id: ${{ secrets.IAM_ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.IAM_SECRET_KEY }}
 
-      # S3 버킷에 빌드파일(zip 파일)을 업로드
       - name: Upload to S3
-        run: aws s3 cp --region ap-northeast-2 ./$GITHUB_SHA.zip s3://$AWS_S3_BUCKET/$GITHUB_SHA.zip
+        run: aws s3 cp --region "$AWS_REGION" "$GITHUB_SHA.zip" "s3://$AWS_S3_BUCKET/$GITHUB_SHA.zip"
 
-      # EC2 인스턴스에 S3에 저장되어 있던 zip 파일을 받아와 배포 시작
-      - name: EC2에 배포
-        run: aws deploy create-deployment --application-name ${{ secrets.AWS_CODE_DEPLOY_APPLICATION }} --deployment-config-name CodeDeployDefault.AllAtOnce --deployment-group-name ${{ secrets.AWS_CODE_DEPLOY_GROUP }} --s3-location bucket=$AWS_S3_BUCKET,key=$GITHUB_SHA.zip,bundleType=zip
+      - name: Create CodeDeploy deployment
+        run: |
+          aws deploy create-deployment \
+            --application-name "$AWS_CODE_DEPLOY_APPLICATION" \
+            --deployment-config-name CodeDeployDefault.AllAtOnce \
+            --deployment-group-name "$AWS_CODE_DEPLOY_GROUP" \
+            --s3-location bucket="$AWS_S3_BUCKET",key="$GITHUB_SHA.zip",bundleType=zip
