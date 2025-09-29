@@ -39,6 +39,12 @@ jobs:
       - name: Copy Jar
         run: |
           cp ./build/libs/*-SNAPSHOT.jar ./deploy/app.jar || cp ./build/libs/*.jar ./deploy/app.jar
+
+      # application.yml 생성 (GitHub Secret → 파일)
+      - name: Write application.yml from secret
+        run: |
+          echo "${{ secrets.APPLICATION_YML }}" > deploy/application.yml    
+
       - name: Make zip file
         run: zip -r ./chat.zip ./deploy appspec.yml scripts
         shell: bash
