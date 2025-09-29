@@ -41,13 +41,11 @@ jobs:
           cp ./build/libs/*-SNAPSHOT.jar ./deploy/app.jar || cp ./build/libs/*.jar ./deploy/app.jar
 
       # application.yml 생성 (GitHub Secret → 파일)
-      - name: Write application.yml from secret
+      - name: Write application.yml from base64 secret
         shell: bash
         run: |
           mkdir -p deploy
-          cat > deploy/application.yml << 'EOF'
-          ${{ secrets.APPLICATION_YML }}
-          EOF  
+          echo "${{ secrets.APPLICATION_YML_B64 }}" | base64 --decode > deploy/application.yml
 
       - name: Make zip file
         run: zip -r ./chat.zip ./deploy appspec.yml scripts
