@@ -42,8 +42,12 @@ jobs:
 
       # application.yml 생성 (GitHub Secret → 파일)
       - name: Write application.yml from secret
+        shell: bash
         run: |
-          echo "${{ secrets.APPLICATION_YML }}" > deploy/application.yml    
+          mkdir -p deploy
+          cat > deploy/application.yml << 'EOF'
+          ${{ secrets.APPLICATION_YML }}
+          EOF  
 
       - name: Make zip file
         run: zip -r ./chat.zip ./deploy appspec.yml scripts
