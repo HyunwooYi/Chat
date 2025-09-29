@@ -40,7 +40,7 @@ jobs:
         run: cp ./build/libs/*.jar ./deploy
 
       - name: Make zip file
-        run: zip -r ./sebadog.zip ./deploy
+        run: zip -r ./chat.zip ./deploy
         shell: bash
 
       - name: Configure AWS credentials
