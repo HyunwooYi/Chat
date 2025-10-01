@@ -1,26 +1,17 @@
-#!/usr/bin/env bash
-set -euo pipefail
+##!/bin/bash
 
-REPOSITORY=/home/ubuntu/app
-PORT=8080
+BUILD_JAR=$(ls /home/ubuntu/app/build/libs/*.jar)
+JAR_NAME=$(basename $BUILD_JAR)
+echo ">>> build 파일명: $JAR_NAME" >> /home/ubuntu/deploy.log
 
-echo "> 현재 구동 중인 애플리케이션 pid 확인"
-CURRENT_PID=$(sudo lsof -t -i:$PORT || true)
-if [ -n "${CURRENT_PID}" ]; then
-  echo "> kill -9 $CURRENT_PID"
-  kill -9 "$CURRENT_PID"
-  sleep 5
-fi
+echo ">>> build 파일 복사" >> /home/ubuntu/deploy.log
+DEPLOY_PATH=/home/ubuntu/app/
+cp $BUILD_JAR $DEPLOY_PATH
 
-echo "> 새 애플리케이션 배포"
-JAR_NAME=$REPOSITORY/deploy/app.jar
-chmod +x "$JAR_NAME"
+echo ">>> 현재 실행중인 애플리케이션 pid 확인 후 일괄 종료" >> /home/ubuntu/deploy.log
+sudo ps -ef | grep java | awk '{print $2}' | xargs kill -15
 
-echo "> 애플리케이션 실행"
-nohup java \
-  -Dfile.encoding=UTF-8 \
-  -Duser.timezone=Asia/Seoul \
-  -jar "$JAR_NAME" \
-  --spring.config.location=classpath:/,file:$REPOSITORY/deploy/ \
-  --spring.profiles.active=prod \
-  >> "$REPOSITORY/nohup.out" 2>&1 &
+DEPLOY_JAR=$DEPLOY_PATH$JAR_NAME
+echo ">>> DEPLOY_JAR 배포"    >> /home/ubuntu/deploy.log
+echo ">>> $DEPLOY_JAR의 $JAR_NAME를 실행합니다" >> /home/ubuntu/deploy.log
+nohup java -jar $DEPLOY_JAR >> /home/ubuntu/deploy.log 2> /home/ubuntu/deploy_err.log &

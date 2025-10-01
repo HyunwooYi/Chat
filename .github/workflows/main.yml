@@ -7,7 +7,10 @@ on:
     branches: [ main ]
 
 env:
+  AWS_REGION: ap-northeast-2
   S3_BUCKET_NAME: my-chat-deploy-bucket
+  AWS_CODE_DEPLOY_APPLICATION: Chat-Application-CD
+  AWS_CODE_DEPLOY_GROUP: Chat-Deployment-Group
 
 jobs:
   build:
@@ -23,60 +26,39 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # 공개되면 안되는 정보를 담은 .yml 파일을 생성
+      - name: make application.yml
+        run: |
+          mkdir -p ./src/main/resources
+          cd ./src/main/resources
+          touch ./application.yml
+          echo "${{ secrets.APPLICATION }}" > ./application.yml
+
+      # 권한 부여
       - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Build with Gradle
-        run: ./gradlew clean build -x test
-
-      - name: Make Directory
-        run: mkdir -p deploy
-
-      - name: Copy Jar
-        run: |
-          cp ./build/libs/*-SNAPSHOT.jar ./deploy/app.jar || cp ./build/libs/*.jar ./deploy/app.jar
-
-      # ▼▼ 시크릿은 push(main) 에서만 주입
-      - name: Write application.yml from secret
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: chmod +x ./gradlew
         shell: bash
-        run: |
-          mkdir -p deploy
-          # 멀티라인 안전 작성 (echo 대신 printf)
-          printf '%s' "${{ secrets.APPLICATION_YML }}" > deploy/application.yml
-          # 비어 있으면 실패시켜서 조기 감지
-          test -s deploy/application.yml || { echo "ERROR: application.yml is empty"; exit 1; }
-          # 개행/BOM 정리
-          sudo apt-get update -y && sudo apt-get install -y dos2unix
-          dos2unix deploy/application.yml || true
-          sed -i '1s/^\xEF\xBB\xBF//' deploy/application.yml
 
+      - name: Build and Test
+        run: ./gradlew build test
+
+      # 빌드 파일을 zip 형식으로 압축 - S3에서는 jar 저장이 안되기 때문에 zip으로 생성
       - name: Make zip file
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        run: zip -r ./chat.zip ./deploy appspec.yml scripts
+        run: zip -r ./$$GITHUB_Chat.zip .
         shell: bash
 
-      - name: Configure AWS credentials
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # AWS 권한
+      - name: AWS credential 설정
         uses: aws-actions/configure-aws-credentials@v1
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-northeast-2
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.CICD_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.CICD_SECRET_KEY }}
 
+      # S3 버킷에 빌드파일(zip 파일)을 업로드
       - name: Upload to S3
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        run: aws s3 cp --region ap-northeast-2 ./chat.zip s3://$S3_BUCKET_NAME/
+        run: aws s3 cp --region ap-northeast-2 ./$GITHUB_Chat.zip s3://$AWS_S3_BUCKET/$GITHUB_Chat.zip
 
-      - name: Deploy
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          aws deploy create-deployment \
-            --application-name Chat-Application-CD \
-            --deployment-group-name Chat-Deployment-Group \
-            --file-exists-behavior OVERWRITE \
-            --s3-location bucket=my-chat-deploy-bucket,bundleType=zip,key=chat.zip \
-            --region ap-northeast-2
+      # EC2 인스턴스에 S3에 저장되어 있던 zip 파일을 받아와 배포 시작
+      - name: EC2에 배포
+        run: aws deploy create-deployment --application-name ${{ env.AWS_CODE_DEPLOY_APPLICATION }} --deployment-config-name CodeDeployDefault.AllAtOnce --deployment-group-name ${{ env.AWS_CODE_DEPLOY_GROUP }} --s3-location bucket=$AWS_S3_BUCKET,key=$$GITHUB_Chat.zip,bundleType=zip
