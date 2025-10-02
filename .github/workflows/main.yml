@@ -11,6 +11,7 @@ env:
   S3_BUCKET_NAME: my-chat-deploy-bucket
   AWS_CODE_DEPLOY_APPLICATION: Chat-Application-CD
   AWS_CODE_DEPLOY_GROUP: Chat-Deployment-Group
+  ZIP_FILE: chat-${{ github.sha }}.zip   # ← 업로드/배포에서 동일하게 쓸 이름
 
 jobs:
   build:
@@ -26,39 +27,45 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 공개되면 안되는 정보를 담은 .yml 파일을 생성
-      - name: make application.yml
+      - name: Make application.yml from secret
         run: |
-          mkdir -p ./src/main/resources
-          cd ./src/main/resources
-          touch ./application.yml
-          echo "${{ secrets.APPLICATION_YML }}" > ./application.yml
+          mkdir -p src/main/resources
+          # 멀티라인 안전
+          printf "%s" "${{ secrets.APPLICATION_YML }}" > src/main/resources/application.yml
 
-      # 권한 부여
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
-        shell: bash
 
-      - name: Build and Test
+      - name: Build (skip tests)
         run: ./gradlew clean build -x test
 
-      # 빌드 파일을 zip 형식으로 압축 - S3에서는 jar 저장이 안되기 때문에 zip으로 생성
-      - name: Make zip file
-        run: zip -r ./$$GITHUB_Chat.zip .
-        shell: bash
+      # === 배포 번들 구성: JAR + appspec.yml + scripts 디렉토리 ===
+      - name: Prepare deployment bundle
+        run: |
+          ls -l build/libs
+          mkdir -p deploy
+          cp build/libs/*.jar deploy/
+          cp appspec.yml deploy/
+          cp -r scripts deploy/
+          cd deploy
+          zip -r "../${ZIP_FILE}" .
 
-          # AWS 권한
-      - name: AWS credential 설정
-        uses: aws-actions/configure-aws-credentials@v1
+      # AWS 자격증명 (가능하면 v4 권장)
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ env.AWS_REGION }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      # S3 버킷에 빌드파일(zip 파일)을 업로드
       - name: Upload to S3
-        run: aws s3 cp --region ap-northeast-2 ./$GITHUB_Chat.zip s3://$AWS_S3_BUCKET/$GITHUB_Chat.zip
+        run: |
+          aws s3 cp --region "${AWS_REGION}" "${ZIP_FILE}" "s3://${S3_BUCKET_NAME}/${ZIP_FILE}"
 
-      # EC2 인스턴스에 S3에 저장되어 있던 zip 파일을 받아와 배포 시작
-      - name: EC2에 배포
-        run: aws deploy create-deployment --application-name ${{ env.AWS_CODE_DEPLOY_APPLICATION }} --deployment-config-name CodeDeployDefault.AllAtOnce --deployment-group-name ${{ env.AWS_CODE_DEPLOY_GROUP }} --s3-location bucket=$AWS_S3_BUCKET,key=$$GITHUB_Chat.zip,bundleType=zip
+      - name: Create CodeDeploy deployment
+        run: |
+          aws deploy create-deployment \
+            --application-name "${AWS_CODE_DEPLOY_APPLICATION}" \
+            --deployment-config-name CodeDeployDefault.AllAtOnce \
+            --deployment-group-name "${AWS_CODE_DEPLOY_GROUP}" \
+            --s3-location bucket="${S3_BUCKET_NAME}",key="${ZIP_FILE}",bundleType=zip
