@@ -1,20 +1,11 @@
-name: Chat Server CI/CD
+name: Build and Deploy to EC2
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-env:
-  AWS_REGION: ap-northeast-2
-  S3_BUCKET_NAME: my-chat-deploy-bucket
-  AWS_CODE_DEPLOY_APPLICATION: Chat-Application-CD
-  AWS_CODE_DEPLOY_GROUP: Chat-Deployment-Group
-  ZIP_FILE: chat-${{ github.sha }}.zip   # ← 업로드/배포에서 동일하게 쓸 이름
+    branches: [ "main" ]
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,45 +18,38 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Make application.yml from secret
+      - name: Create application.yml
         run: |
           mkdir -p src/main/resources
-          # 멀티라인 안전
-          printf "%s" "${{ secrets.APPLICATION_YML }}" > src/main/resources/application.yml
-
+          echo "${{ secrets.APPLICATION_YML }}" > src/main/resources/application.yml
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      - name: Build (skip tests)
+      - name: Spring Boot Build
         run: ./gradlew clean build -x test
 
-      # === 배포 번들 구성: JAR + appspec.yml + scripts 디렉토리 ===
-      - name: Prepare deployment bundle
-        run: |
-          ls -l build/libs
-          mkdir -p deploy
-          cp build/libs/*.jar deploy/
-          cp appspec.yml deploy/
-          cp -r scripts deploy/
-          cd deploy
-          zip -r "../${ZIP_FILE}" .
+      - name: Docker Image Build
+        run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.DOCKERHUB_IMAGENAME }} .
 
-      # AWS 자격증명 (가능하면 v4 권장)
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Docker Hub Login
+        uses: docker/login-action@v2
         with:
-          aws-region: ${{ env.AWS_REGION }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Upload to S3
-        run: |
-          aws s3 cp --region "${AWS_REGION}" "${ZIP_FILE}" "s3://${S3_BUCKET_NAME}/${ZIP_FILE}"
+      - name: Docker Hub push
+        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.DOCKERHUB_IMAGENAME }}
 
-      - name: Create CodeDeploy deployment
-        run: |
-          aws deploy create-deployment \
-            --application-name "${AWS_CODE_DEPLOY_APPLICATION}" \
-            --deployment-config-name CodeDeployDefault.AllAtOnce \
-            --deployment-group-name "${AWS_CODE_DEPLOY_GROUP}" \
-            --s3-location bucket="${S3_BUCKET_NAME}",key="${ZIP_FILE}",bundleType=zip
+      - name: AWS EC2 Connection
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT }}
+          timeout: 60s
+          script: |
+            sudo docker stop ${{ secrets.DOCKERHUB_IMAGENAME }}
+            sudo docker rm ${{ secrets.DOCKERHUB_IMAGENAME }}
+            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.DOCKERHUB_IMAGENAME }}
+            sudo docker run -it -d -p 8080:8080 --name ${{ secrets.DOCKERHUB_IMAGENAME }} -e TZ=Asia/Seoul ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.DOCKERHUB_IMAGENAME }}
