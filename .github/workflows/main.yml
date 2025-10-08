@@ -77,8 +77,27 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_SSH_PORT }}
-          timeout: 60s
-          script: sudo docker stop dnd2 || true && sudo docker rm dnd2 || true && sudo docker rmi stephenyi/dnd || true && sudo docker pull stephenyi/dnd && sudo docker run -d -p 8080:8080 --name dnd2 stephenyi/dnd
-
+          timeout: 180s
+          script: |
+            set -e
+            
+            # 1) EC2에 application.yml 내려쓰기 (Secrets는 base64 형태라고 가정)
+            mkdir -p /home/ubuntu/app/deploy
+            echo "${{ secrets.OCCUPY_SECRET }}" | base64 --decode > /home/ubuntu/app/deploy/application.yml
+            
+            # 2) 기존 컨테이너/이미지 정리 및 최신 이미지 받기
+            sudo docker stop dnd2 || true
+            sudo docker rm dnd2 || true
+            sudo docker rmi stephenyi/dnd || true
+            sudo docker pull stephenyi/dnd
+            
+            # 3) 컨테이너 실행: application.yml 마운트 + 추가 로케이션 지정 + 프로파일 지정
+            sudo docker run -d --name dnd2 \
+              -p 8080:8080 \
+              -v /home/ubuntu/app/deploy/application.yml:/application.yml:ro \
+              -e SPRING_CONFIG_ADDITIONAL_LOCATION=/application.yml \
+              -e SPRING_PROFILES_ACTIVE=docker \
+              --restart unless-stopped \
+              stephenyi/dnd
       - name: Remove IP FROM security group
         run: aws ec2 revoke-security-group-ingress --group-id ${{ secrets.AWS_SG_ID }} --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.ipv4 }}/32
